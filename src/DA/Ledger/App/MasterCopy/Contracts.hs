@@ -3,7 +3,7 @@
 
 module DA.Ledger.App.MasterCopy.Contracts (
     MCContract(..),
-    makeLedgerCommand,extractCreateEvent,
+    makeCreateCommand,makeArchiveCommand,extractCreateEvent,getTid
     ) where
 
 import DA.Ledger (
@@ -11,7 +11,7 @@ import DA.Ledger (
     Command(..), Event(..), Transaction(..)
     )
 
-import DA.Ledger.App.MasterCopy.Domain (Master, Copy)
+import DA.Ledger.App.MasterCopy.Domain (Master, Copy, Subscriber)
 import DA.Ledger.App.MasterCopy.Logging (Logger)
 import DA.Ledger.IsLedgerValue (toRecord,fromRecord)
 import DA.Ledger.Types
@@ -20,18 +20,16 @@ import Data.Text.Internal.Lazy(Text)
 data MCContract
     = CMaster Master
     | CCopy Copy
+    | CSubscriber Subscriber
 
-makeLedgerCommand :: PackageId -> MCContract -> Command
-makeLedgerCommand pid = \case
-    CMaster x -> makeLedgerCommandInner "MasterCopy" "Master" (toRecord x) pid
-    CCopy x -> makeLedgerCommandInner "MasterCopy" "Copy" (toRecord x) pid
+makeCreateCommand :: PackageId -> MCContract -> Command
+makeCreateCommand pid = \case
+    CMaster x -> CreateCommand {tid = getTid pid "Master", args=toRecord x}
+    CCopy x -> CreateCommand {tid = getTid pid "Copy", args=toRecord x}
+    CSubscriber x -> CreateCommand {tid = getTid pid "Subscriber", args=toRecord x}
 
-makeLedgerCommandInner :: Text -> Text -> Record -> PackageId -> Command
-makeLedgerCommandInner m e args pid = do
-    let mod = ModuleName m
-    let ent = EntityName e
-    let tid = TemplateId (Identifier pid mod ent)
-    CreateCommand {tid,args}
+makeArchiveCommand :: ContractId -> TemplateId -> Command
+makeArchiveCommand cid tid = ExerciseCommand{tid, cid, choice=Choice "Archive", arg=VRecord (Record Nothing [])}
 
 extractCreateEvent :: Event -> Maybe MCContract
 extractCreateEvent = \case
@@ -41,5 +39,11 @@ extractCreateEvent = \case
     CreatedEvent{tid=TemplateId Identifier{ent=EntityName"Copy"}, createArgs} -> do
         x <- fromRecord createArgs
         return $ CCopy x
+    CreatedEvent{tid=TemplateId Identifier{ent=EntityName"Subscriber"}, createArgs} -> do
+        x <- fromRecord createArgs
+        return $ CSubscriber x
     _ ->
         Nothing
+
+getTid :: PackageId -> Text -> TemplateId
+getTid pid s = TemplateId (Identifier pid (ModuleName "MasterCopy") (EntityName s))

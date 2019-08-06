@@ -3,10 +3,10 @@
 -- SPDX-License-Identifier: Apache-2.0
 module DA.Ledger.App.MasterCopy.Main (main) where
 
-import Control.Monad.Trans.Class (lift)
 import DA.Ledger as Ledger
 import DA.Ledger.App.MasterCopy.Bot
 import DA.Ledger.App.MasterCopy.RuleBot
+import DA.Ledger.App.MasterCopy.CopyBot
 import DA.Ledger.App.MasterCopy.Contracts
 import DA.Ledger.App.MasterCopy.Domain (Party(..), Copy(..))
 import DA.Ledger.App.MasterCopy.Logging (Logger, colourLog,plainLog,colourWrap)
@@ -44,42 +44,10 @@ runMain p = do
     errLog "Starting bot."
     let bc = BotContext (ApplicationId "CopyBot") p lid
     uuids <- randomUUIDs
-    let
-        rule _ _ = []
-        upd _ _ = ()
-        recov _ _ _ _ = []
-        ts = TimeSettings Static 5
+    let ts = TimeSettings Static 5
 
-    simpleRuleNanobot log ts bc upd rule recov ()
+    copyBot log pid ts bc
 
-{-
-copyMaster :: PackageId -> BotContext -> Message -> Timestamp -> [UUID] -> ([Commands], [UUID])
-copyMaster pid bc m t uuids = case m of
-    MActiveContracts es -> copyNewMasters pid bc es t uuids
-    MTransaction Transaction{events} -> copyNewMasters pid bc events t uuids
-    MCompletion _ -> ([], uuids)
-
-copyNewMasters :: PackageId -> BotContext -> [Event] -> Timestamp -> [UUID] -> ([Commands], [UUID])
-copyNewMasters pid BotContext{aid, party, lid} es t uuids = (toCommands t copies, tail uuids)
-    where
-        contracts = map extractCreateEvent es
-        cp = \case
-            Just (CMaster master) -> Just (CCopy Copy {master, obs=party})
-            _ -> Nothing
-        copies = mapMaybe cp contracts
-        toCommands t = \case
-            [] -> []
-            cs -> [Commands {
-                    lid,
-                    wid = Nothing,
-                    aid,
-                    cid = CommandId . T.pack . toString . head $ uuids,
-                    party,
-                    leTime = Timestamp 0 0,
-                    mrTime = Timestamp 5 0,
-                    coms = map (makeLedgerCommand pid) cs
-                }]
--}
 parseArgs :: [String] -> Maybe Party
 parseArgs = \case
     [who] -> Just (Party (T.pack who))

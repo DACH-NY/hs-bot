@@ -4,7 +4,7 @@
 module DA.Ledger.App.MasterCopy.MCLedger (Handle(..), connect, run) where
 
 import DA.Ledger as Ledger
-import DA.Ledger.App.MasterCopy.Contracts (MCContract,makeLedgerCommand)
+import DA.Ledger.App.MasterCopy.Contracts (MCContract)
 import DA.Ledger.App.MasterCopy.Logging (Logger)
 import Data.Maybe (maybeToList, isJust, catMaybes)
 import Data.Text (pack)

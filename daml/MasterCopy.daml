@@ -23,3 +23,11 @@ template Copy
   where
     signatory (signatory master)
     observer obs
+
+template Subscriber
+  with
+    owner : Party
+    obs : Party
+  where
+    signatory obs
+    observer owner

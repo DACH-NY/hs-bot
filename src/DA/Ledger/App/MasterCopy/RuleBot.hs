@@ -1,6 +1,17 @@
 {-# LANGUAGE StandaloneDeriving #-}
 
-module DA.Ledger.App.MasterCopy.RuleBot (StateUpdate, Rule, Recovery, TimeMode(..), TimeSettings(..), simpleRuleNanobot) where
+module DA.Ledger.App.MasterCopy.RuleBot 
+    ( StateUpdate
+    , Rule
+    , Recovery
+    , TimeMode(..)
+    , TimeSettings(..)
+    , BotState(..)
+    , ACS(..)
+    , TemplateACS(..)
+    , PendingSet
+    , simpleRuleNanobot
+    ) where
 
 import DA.Ledger as Ledger
 import DA.Ledger.App.MasterCopy.Bot
