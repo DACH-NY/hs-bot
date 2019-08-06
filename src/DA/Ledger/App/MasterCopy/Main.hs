@@ -6,6 +6,7 @@ module DA.Ledger.App.MasterCopy.Main (main) where
 import Control.Monad.Trans.Class (lift)
 import DA.Ledger as Ledger
 import DA.Ledger.App.MasterCopy.Bot
+import DA.Ledger.App.MasterCopy.RuleBot
 import DA.Ledger.App.MasterCopy.Contracts
 import DA.Ledger.App.MasterCopy.Domain (Party(..), Copy(..))
 import DA.Ledger.App.MasterCopy.Logging (Logger, colourLog,plainLog,colourWrap)
@@ -43,8 +44,15 @@ runMain p = do
     errLog "Starting bot."
     let bc = BotContext (ApplicationId "CopyBot") p lid
     uuids <- randomUUIDs
-    nanobot log bc (copyMaster pid) uuids
+    let
+        rule _ _ = []
+        upd _ _ = ()
+        recov _ _ _ _ = []
+        ts = TimeSettings Static 5
 
+    simpleRuleNanobot log ts bc upd rule recov ()
+
+{-
 copyMaster :: PackageId -> BotContext -> Message -> Timestamp -> [UUID] -> ([Commands], [UUID])
 copyMaster pid bc m t uuids = case m of
     MActiveContracts es -> copyNewMasters pid bc es t uuids
@@ -71,7 +79,7 @@ copyNewMasters pid BotContext{aid, party, lid} es t uuids = (toCommands t copies
                     mrTime = Timestamp 5 0,
                     coms = map (makeLedgerCommand pid) cs
                 }]
-
+-}
 parseArgs :: [String] -> Maybe Party
 parseArgs = \case
     [who] -> Just (Party (T.pack who))

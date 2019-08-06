@@ -55,7 +55,8 @@ data BotContext = BotContext {
 } deriving (Show)
 
 nanobot
-    :: Logger
+    :: Show s
+    => Logger
     -> BotContext
     -> (BotContext -> Message -> Timestamp -> s -> ([Commands], s))
     -> s
@@ -69,6 +70,7 @@ nanobot log bc@BotContext{lid, party} u s = do
     writeChan chan (MActiveContracts ces)
     log "Calling Transaction Service"
     txs <- MCLedger.run 600 $ getTransactions (txsReq offset)
+    log $ "Initial State: " <> show s
     withAsync (txloop chan txs offset) $ \eor -> do
         uptloop s chan (u bc)
         wait eor
@@ -97,6 +99,7 @@ nanobot log bc@BotContext{lid, party} u s = do
             t <- getTimestamp
             log $ "Processing message at: " <> show t <> ": " <> show m
             let (cs, s') = u m t s
+            log $ "New State: " <> show s'
             withAsync (mapConcurrently_  (submitCommands log lid c) cs) (\eoc -> do
                     uptloop s' c u
                     wait eoc
