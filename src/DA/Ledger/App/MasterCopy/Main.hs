@@ -13,7 +13,6 @@ import DA.Ledger.App.MasterCopy.MCLedger
 import Data.Maybe
 import Data.UUID
 import qualified Data.Text.Lazy as T
-import qualified Data.Text.Lazy as Text
 import System.Console.ANSI (Color(..))
 import System.Environment (getArgs)
 import System.Random
@@ -75,7 +74,7 @@ copyNewMasters pid BotContext{aid, party, lid} es t uuids = (toCommands t copies
 
 parseArgs :: [String] -> Maybe Party
 parseArgs = \case
-    [who] -> Just (Party (Text.pack who))
+    [who] -> Just (Party (T.pack who))
     [] -> Just defaultParty
     _ -> Nothing
 

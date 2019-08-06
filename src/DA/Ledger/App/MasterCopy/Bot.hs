@@ -1,22 +1,17 @@
 {-# LANGUAGE BangPatterns #-}
 
-module DA.Ledger.App.MasterCopy.Bot (Message(..), BotContext(..), nanobot) where
+module DA.Ledger.App.MasterCopy.Bot (Message(..), BotContext(..), nanobot, CommandCompletion(..)) where
 
 import Control.Concurrent.Async
 import Control.Concurrent.Chan
 import DA.Ledger as Ledger
 import DA.Ledger.App.MasterCopy.Logging (colourLog,plainLog,colourWrap, Logger)
 import DA.Ledger.App.MasterCopy.MCLedger as MCLedger
-import Data.Dynamic
-import Data.Map
-import Data.Set
 import Data.Time
 import Data.Time.Clock
 import Data.Time.Clock.POSIX
 import Data.Tuple.Extra
-import qualified Data.Text as Text.Read
 import qualified Data.Text.Lazy as Text (pack)
-import System.Console.ANSI (Color(..))
 
 -- Low level Nanobot
 --------------------
@@ -26,7 +21,7 @@ type Rejection = String
 data Message
     = MActiveContracts [Event]
     | MTransaction Transaction
-    | MCompletion Completion
+    | MCompletion CommandCompletion
     deriving (Show)
 
 getTimestamp :: IO Timestamp
@@ -39,12 +34,12 @@ data CommandCompletion = CommandCompletion {
     result :: Either Rejection TransactionId
 } deriving (Show)
 
-submitCommands :: Logger -> LedgerId -> Commands -> IO CommandCompletion
-submitCommands log lid cs@Commands{cid} = do
+submitCommands :: Logger -> LedgerId -> Chan Message -> Commands -> IO ()
+submitCommands log lid chan cs@Commands{cid} = do
     result <- run 5 $ Ledger.submitAndWaitForTransactionId cs
     let cp = CommandCompletion cid result
     log $ "Command completion: " <> show cp
-    return (CommandCompletion cid result)
+    writeChan chan (MCompletion cp)
 
 parallel :: [IO a] -> IO [a]
 parallel (x:xs) = withAsync x (\r -> do
@@ -102,7 +97,7 @@ nanobot log bc@BotContext{lid, party} u s = do
             t <- getTimestamp
             log $ "Processing message at: " <> show t <> ": " <> show m
             let (cs, s') = u m t s
-            withAsync (mapConcurrently_  (submitCommands log lid) cs) (\eoc -> do
+            withAsync (mapConcurrently_  (submitCommands log lid c) cs) (\eoc -> do
                     uptloop s' c u
                     wait eoc
                 )
