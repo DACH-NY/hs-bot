@@ -44,6 +44,13 @@ submitCommands log lid cs@Commands{cid} = do
     log $ "Command completion: " <> show cp
     return (CommandCompletion cid result)
 
+parallel :: [IO a] -> IO [a]
+parallel (x:xs) = withAsync x (\r -> do
+        ys <- parallel xs
+        y <- wait r
+        return (y : ys)
+    )
+
 data BotContext = BotContext {
     aid :: ApplicationId,
     party :: Party,
@@ -65,10 +72,9 @@ nanobot log bc@BotContext{lid, party} u s = do
     writeChan chan (MActiveContracts ces)
     log "Calling Transaction Service"
     txs <- MCLedger.run 600 $ getTransactions (txsReq offset)
-    eor <- async (txloop chan txs offset)
-    eow <- async (uptloop s chan (u bc))
-    wait eor
-    wait eow
+    withAsync (txloop chan txs offset) $ \eor -> do
+        uptloop s chan (u bc)
+        wait eor
     where
         filter = filterEverthingForParty party
         verbose = Verbosity False
@@ -94,5 +100,7 @@ nanobot log bc@BotContext{lid, party} u s = do
             t <- getTimestamp
             log $ "Processing message at: " <> show t <> ": " <> show m
             let (cs, s') = u m t s
-            mapM_ (async . submitCommands log lid) cs
-            uptloop s' c u
+            withAsync (mapConcurrently_  (submitCommands log lid) cs) (\eoc -> do
+                    uptloop s' c u
+                    wait eoc
+                )
