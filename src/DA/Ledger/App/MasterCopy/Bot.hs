@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 module DA.Ledger.App.MasterCopy.Bot (Message(..), BotContext(..), nanobot) where
 
 import Control.Concurrent.Async
@@ -95,7 +97,7 @@ nanobot log bc@BotContext{lid, party} u s = do
                     log $ "Transactions received: " <> show t
                     writeList2Chan c (Prelude.map MTransaction t)
                     txloop c ts os
-        uptloop s c u = do
+        uptloop !s c u = do
             m <- readChan c
             t <- getTimestamp
             log $ "Processing message at: " <> show t <> ": " <> show m
