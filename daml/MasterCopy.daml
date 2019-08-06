@@ -1,0 +1,25 @@
+-- Copyright (c) 2019 Digital Asset (Switzerland) GmbH and/or its affiliates. All rights reserved.
+-- SPDX-License-Identifier: Apache-2.0
+
+daml 1.2
+
+module MasterCopy where
+
+template Master
+  with
+    owner : Party
+    name : Text
+    info : Text
+  where
+    signatory owner
+
+    key (owner, name) : (Party, Text)
+    maintainer key._1
+    
+template Copy
+  with
+    master : Master
+    obs : Party
+  where
+    signatory (signatory master)
+    observer obs
