@@ -23,6 +23,6 @@ example is given in the `Main` class. It listens for any `create` events of `Mas
 # Running
 
 1. Start Sandbox and Navigator with `daml start`
-1. Create some contracts for Alice through Navigator
 1. Start client with `stack run hs-bot-exe -- Alice`
-1. Create some more contracts for Alice through Navigator
+1. Create some more contracts for Alice (and/or Bob) through Navigator
+1. Observe how the Bot will maintain a unique `Copy` per `Subscriber` and `Master`
