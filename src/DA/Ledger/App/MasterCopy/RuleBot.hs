@@ -20,8 +20,7 @@ import qualified Data.Set as Set
 import qualified Data.Text.Lazy as T
 import Data.UUID
 import System.Random
-
-import Debug.Trace
+import Data.Tuple.Extra
 
 data TemplateACS = TemplateACS {
     contracts :: Map.Map ContractId Record,
@@ -29,14 +28,14 @@ data TemplateACS = TemplateACS {
     pendingByCommandId :: Map.Map CommandId (Set.Set ContractId)
 } deriving Show
 
-data ACS = ACS {
+data ACS cm = ACS {
     templateACSs :: Map.Map TemplateId TemplateACS,
-    commandsInFlight :: Map.Map CommandId (Maybe Message, Commands)
+    commandsInFlight :: Map.Map CommandId (cm, Commands)
 } deriving Show
 
 type PendingSet = Map.Map TemplateId (Set.Set ContractId)
 
-emptyACS :: ACS
+emptyACS :: ACS cm
 emptyACS = ACS {
     templateACSs = Map.empty,
     commandsInFlight = Map.empty
@@ -49,18 +48,18 @@ emptyTemplateACS = TemplateACS {
     pendingByCommandId = Map.empty
 }
 
-data BotState cs = BotState {
+data BotState cs cm = BotState {
     custom :: cs,
-    acs :: ACS,
+    acs :: ACS cm,
     uuids :: [UUID]
 }
 
-instance Show cs => Show (BotState cs) where
+instance (Show cs, Show cm) => Show (BotState cs cm) where
     show BotState{custom, acs} = "Active Contract Set: " <> show acs <> "\nCustom State: " <> show custom
 
-type StateUpdate cs = BotState cs -> Event -> cs
-type Rule cs = BotState cs -> Maybe Event -> [([Command], PendingSet)]
-type Recovery cs = BotState cs -> Maybe Message -> Commands -> CommandCompletion -> [([Command], PendingSet)]
+type StateUpdate cs cm = BotState cs cm-> Event -> cs
+type Rule cs cm = BotState cs cm -> Maybe Event -> [(cm, [Command], PendingSet)]
+type Recovery cs cm = BotState cs cm -> cm -> Commands -> CommandCompletion -> [(cm, [Command], PendingSet)]
 
 data TimeMode = Static | Wallclock
 data TimeSettings = TimeSettings {
@@ -68,29 +67,29 @@ data TimeSettings = TimeSettings {
     ttl :: Integer
 }
 
-acsProcessEvent :: ACS -> Event -> ACS
+acsProcessEvent :: ACS cm -> Event -> ACS cm
 acsProcessEvent a = \case
     CreatedEvent{cid, tid, createArgs} -> insertIntoACS a tid cid createArgs
     ArchivedEvent{cid, tid} -> removeFromACS a tid cid
 
-insertIntoACS :: ACS -> TemplateId -> ContractId -> Record -> ACS
+insertIntoACS :: ACS cm -> TemplateId -> ContractId -> Record -> ACS cm
 insertIntoACS a@ACS{templateACSs} tid cid r = a{templateACSs=ta'}
     where
         tacs@TemplateACS{contracts} = fromMaybe emptyTemplateACS (Map.lookup tid templateACSs)
         ta' = Map.insert tid tacs{contracts = Map.insert cid r contracts} templateACSs
 
-removeFromACS :: ACS -> TemplateId -> ContractId -> ACS
+removeFromACS :: ACS cm -> TemplateId -> ContractId -> ACS cm
 removeFromACS a@ACS{templateACSs} tid cid = a{templateACSs=ta'}
     where
         tacs@TemplateACS{contracts} = fromMaybe emptyTemplateACS (Map.lookup tid templateACSs)
         ta' = Map.insert tid tacs{contracts = Map.delete cid contracts} templateACSs
 
-acsProcessCompletion :: ACS -> CommandCompletion -> ACS
+acsProcessCompletion :: ACS cm -> CommandCompletion -> ACS cm
 acsProcessCompletion a@ACS{templateACSs, commandsInFlight} c@CommandCompletion{command_id, result} =
     ACS{templateACSs=templateACSs', commandsInFlight=commandsInFlight'}
     where
         commandsInFlight' = Map.delete command_id commandsInFlight
-        tacsAction =  case traceShowId result of
+        tacsAction =  case result of
             Left _ -> processCommandFailure
             Right _ -> processCommandSuccess
         templateACSs' = Map.map (tacsAction command_id) templateACSs
@@ -114,16 +113,16 @@ processCommandFailure cmdid tacs@TemplateACS{contracts, pending, pendingByComman
         (pending', contracts') = transfer cids pending contracts
         
 
-processEvent :: StateUpdate s -> BotState s  -> Event -> BotState s
+processEvent :: StateUpdate cs cm -> BotState cs cm  -> Event -> BotState cs cm
 processEvent upd bs e =
     let acs' = acsProcessEvent (acs bs) e
         custom = upd (bs{acs=acs'}) e
     in bs{acs=acs', custom}
 
-processEvents :: StateUpdate s -> BotState s -> [Event] -> BotState s
+processEvents :: StateUpdate cs cm -> BotState cs cm -> [Event] -> BotState cs cm
 processEvents upd = foldl (processEvent upd)
 
-addToPending :: BotState cs -> (UUID, PendingSet) -> BotState cs
+addToPending :: BotState cs cm -> (UUID, PendingSet) -> BotState cs cm
 addToPending bs (uuid, ps) = bs{acs=acs'}
     where
         cmdid = CommandId . T.pack . toString $ uuid
@@ -141,32 +140,35 @@ transfer ks f t = (f', t')
         (f', nt) = Map.partitionWithKey (\k _ -> k `notElem` ks) f
         t' = Map.union t nt
 
-addToInFlight :: Message -> BotState cs -> Commands -> BotState cs
-addToInFlight m bs@BotState{acs=acs@ACS{commandsInFlight}} cmds@Commands{cid} = 
-    bs{acs=acs{commandsInFlight=Map.insert cid (Just m, cmds) commandsInFlight}}
+addToInFlight :: BotState cs cm -> (cm, Commands) -> BotState cs cm
+addToInFlight bs@BotState{acs=acs@ACS{commandsInFlight}} (cm, cmds@Commands{cid}) = 
+    bs{acs=acs{commandsInFlight=Map.insert cid (cm, cmds) commandsInFlight}}
 
-processCommands :: BotContext -> TimeSettings -> Timestamp -> Message -> [([Command], PendingSet)] -> BotState cs -> ([Commands], BotState cs)
-processCommands BotContext{aid, party, lid} ts  systime m cmds bs = (cs, bs3)
+processCommands :: BotContext -> TimeSettings -> Timestamp -> [(cm, [Command], PendingSet)] -> BotState cs cm -> ([Commands], BotState cs cm)
+processCommands BotContext{aid, party, lid} ts  systime cmds bs = (map snd cs, bs3)
     where
         (uuids, bs1) = takeUUIDs bs (length cmds)
-        ps = zip uuids (map snd cmds)
+        ps = zip uuids (map thd3 cmds)
         bs2 = foldl addToPending bs1 ps
-        bs3 = foldl (addToInFlight m) bs2 cs
-        cs = zipWith mkCommand uuids (map fst cmds)
+        bs3 = foldl addToInFlight bs2 cs
+        cs = zipWith mkCommand uuids cmds
         leTime@Timestamp{seconds, nanos} = case mode ts of
             Static -> Timestamp 0 0
             Wallclock -> systime
-        mkCommand uuid coms =
-            Commands {
-            lid,
-            wid = Nothing,
-            aid,
-            cid = CommandId . T.pack . toString $ uuid,
-            party,
-            leTime,
-            mrTime = Timestamp (seconds + ttl ts) nanos,
-            coms
-        }
+        mkCommand uuid (cm, coms, _) =
+            (
+                cm,
+                Commands {
+                    lid,
+                    wid = Nothing,
+                    aid,
+                    cid = CommandId . T.pack . toString $ uuid,
+                    party,
+                    leTime,
+                    mrTime = Timestamp (seconds + ttl ts) nanos,
+                    coms
+                }
+            )
 
 randomUUIDs :: IO [UUID]
 randomUUIDs = uuids <$> getStdGen
@@ -177,17 +179,17 @@ randomUUIDs = uuids <$> getStdGen
         uncurry4 f (x1, x2, x3, x4) = f x1 x2 x3 x4
         uuids g = map (uncurry4 fromWords) (toFours (randoms g))
 
-takeUUIDs :: BotState cs -> Int -> ([UUID], BotState cs)
+takeUUIDs :: BotState cs cm -> Int -> ([UUID], BotState cs cm)
 takeUUIDs bs@BotState{uuids} n = (take n uuids, bs{uuids = drop n uuids})
 
 simpleRuleNanobot
-    :: Show cs
+    :: (Show cs, Show cm)
     => Logger
     -> TimeSettings
     -> BotContext
-    -> StateUpdate cs
-    -> Rule cs
-    -> Recovery cs
+    -> StateUpdate cs cm
+    -> Rule cs cm
+    -> Recovery cs cm
     -> cs
     -> IO ()
 simpleRuleNanobot log ts bc upd rule recov init
@@ -196,28 +198,28 @@ simpleRuleNanobot log ts bc upd rule recov init
         nanobot log bc (srnProcessMessage ts upd rule recov) (BotState {acs = emptyACS, custom = init, uuids})
 
 srnProcessMessage
-    :: Show cs
+    :: (Show cs, Show cm)
     => TimeSettings
-    -> StateUpdate cs
-    -> Rule cs
-    -> Recovery cs
+    -> StateUpdate cs cm
+    -> Rule cs cm
+    -> Recovery cs cm
     -> BotContext
     -> Message
     -> Timestamp
-    -> BotState cs
-    -> ([Commands], BotState cs)
+    -> BotState cs cm
+    -> ([Commands], BotState cs cm)
 srnProcessMessage ts upd rule recov bc m systime bs = 
     case m of
         MActiveContracts ces ->
             let newbs = processEvents upd bs ces
-            in processCommands bc ts systime m (rule newbs Nothing) newbs
+            in processCommands bc ts systime (rule newbs Nothing) newbs
         MTransaction Transaction{events} ->
             let newbs = processEvents upd bs events
                 commands = concatMap (rule newbs . Just) events
-            in processCommands bc ts systime m commands newbs
+            in processCommands bc ts systime commands newbs
         MCompletion cp@CommandCompletion{command_id, result} -> case result of
             Right _ ->([], bs{acs = acsProcessCompletion (acs bs) cp})
             Left _ -> let newbs = bs{acs = acsProcessCompletion (acs bs) cp}
                         in case Map.lookup command_id (commandsInFlight (acs bs)) of
-                            Just (e, cmd) -> processCommands bc ts systime m (recov newbs e cmd cp) newbs
-                            Nothing -> processCommands bc ts systime m (rule newbs Nothing) newbs
+                            Just (e, cmd) -> processCommands bc ts systime (recov newbs e cmd cp) newbs
+                            Nothing -> processCommands bc ts systime (rule newbs Nothing) newbs

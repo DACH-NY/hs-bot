@@ -23,16 +23,16 @@ copyBot
 copyBot log pid ts bc =
     simpleRuleNanobot log ts bc copyUpd (copyRule pid bc) (copyRecov pid bc) ()
 
-copyUpd :: StateUpdate ()
+copyUpd :: StateUpdate () ()
 copyUpd _ _ = ()
 
-copyRecov :: PackageId -> BotContext -> Recovery ()
+copyRecov :: PackageId -> BotContext -> Recovery () ()
 copyRecov pid bc bs _ _ _ = updateCopies pid bc bs
 
-copyRule :: PackageId -> BotContext -> Rule ()
+copyRule :: PackageId -> BotContext -> Rule () ()
 copyRule pid bc bs _ = updateCopies pid bc bs
 
-updateCopies :: PackageId -> BotContext -> BotState () -> [([Command], PendingSet)]
+updateCopies :: PackageId -> BotContext -> BotState () () -> [((), [Command], PendingSet)]
 updateCopies pid BotContext{party} BotState{acs} = cmds
     where
         subsTid = getTid pid "Subscriber"
@@ -55,11 +55,11 @@ updateCopies pid BotContext{party} BotState{acs} = cmds
         archiveMissingSubscriber = Prelude.filter (\(_, Copy{obs}) -> obs `notElem` subscribingParties) cs
 
         archiveCids = Set.toList $ Set.fromList (map fst (archiveMissingMaster ++ archiveMissingSubscriber))
-        archiveCmds = map (\cid -> ([makeArchiveCommand cid copyTid], Map.singleton copyTid (Set.singleton cid))) archiveCids
+        archiveCmds = map (\cid -> ((), [makeArchiveCommand cid copyTid], Map.singleton copyTid (Set.singleton cid))) archiveCids
 
         neededCopies = [Copy m o | m <- map snd ms, o <- subscribingParties]
         createCps = Set.toList (Set.difference (Set.fromList neededCopies) (Set.fromList eventualcs))
-        createCmds = map (\cp -> ([makeCreateCommand pid (CCopy cp)], Map.empty)) createCps
+        createCmds = map (\cp -> ((), [makeCreateCommand pid (CCopy cp)], Map.empty)) createCps
 
         cmds = createCmds ++ archiveCmds
 
@@ -71,7 +71,7 @@ copiesFromCommands pid Commands{coms} = mapMaybe mapFn coms
             CreateCommand{tid=copyTid, args} -> fromRecord args
             _ -> Nothing
 
-getRecords :: TemplateId -> ACS -> [(ContractId, Record)]
+getRecords :: TemplateId -> ACS () -> [(ContractId, Record)]
 getRecords tid acs = maybe [] (Map.toList . contracts) mtacs
     where
         mtacs = Map.lookup tid (templateACSs acs)
