@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
-module DA.Ledger.App.MasterCopy.Bot (Message(..), BotContext(..), nanobot, CommandCompletion(..)) where
+module DA.Ledger.App.MasterCopy.Bot (Message(..), BotContext(..), nanobot, CommandCompletion(..), Rejection) where
 
 import Control.Concurrent.Async
 import Control.Concurrent.Chan

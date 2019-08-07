@@ -59,7 +59,7 @@ instance (Show cs, Show cm) => Show (BotState cs cm) where
 
 type StateUpdate cs cm = BotState cs cm-> Event -> cs
 type Rule cs cm = BotState cs cm -> Maybe Event -> [(cm, [Command], PendingSet)]
-type Recovery cs cm = BotState cs cm -> cm -> Commands -> CommandCompletion -> [(cm, [Command], PendingSet)]
+type Recovery cs cm = BotState cs cm -> cm -> Commands -> Rejection -> [(cm, [Command], PendingSet)]
 
 data TimeMode = Static | Wallclock
 data TimeSettings = TimeSettings {
@@ -219,7 +219,7 @@ srnProcessMessage ts upd rule recov bc m systime bs =
             in processCommands bc ts systime commands newbs
         MCompletion cp@CommandCompletion{command_id, result} -> case result of
             Right _ ->([], bs{acs = acsProcessCompletion (acs bs) cp})
-            Left _ -> let newbs = bs{acs = acsProcessCompletion (acs bs) cp}
+            Left rej -> let newbs = bs{acs = acsProcessCompletion (acs bs) cp}
                         in case Map.lookup command_id (commandsInFlight (acs bs)) of
-                            Just (e, cmd) -> processCommands bc ts systime (recov newbs e cmd cp) newbs
+                            Just (e, cmd) -> processCommands bc ts systime (recov newbs e cmd rej) newbs
                             Nothing -> processCommands bc ts systime (rule newbs Nothing) newbs
