@@ -1,5 +1,3 @@
-{-# LANGUAGE StandaloneDeriving #-}
-
 module DA.Ledger.App.MasterCopy.RuleBot 
     ( StateUpdate
     , Rule
@@ -30,8 +28,6 @@ data TemplateACS = TemplateACS {
     pending :: Map.Map ContractId Record,
     pendingByCommandId :: Map.Map CommandId (Set.Set ContractId)
 } deriving Show
-
-deriving instance Show Commands
 
 data ACS = ACS {
     templateACSs :: Map.Map TemplateId TemplateACS,
@@ -94,9 +90,9 @@ acsProcessCompletion a@ACS{templateACSs, commandsInFlight} c@CommandCompletion{c
     ACS{templateACSs=templateACSs', commandsInFlight=commandsInFlight'}
     where
         commandsInFlight' = Map.delete command_id commandsInFlight
-        tacsAction =  case result of
-            Left _ -> processCommandSuccess
-            Right _ -> processCommandFailure
+        tacsAction =  case traceShowId result of
+            Left _ -> processCommandFailure
+            Right _ -> processCommandSuccess
         templateACSs' = Map.map (tacsAction command_id) templateACSs
 
 processCommandSuccess :: CommandId -> TemplateACS -> TemplateACS
@@ -114,7 +110,7 @@ processCommandFailure cmdid tacs@TemplateACS{contracts, pending, pendingByComman
     where
         mpending = Map.lookup cmdid pendingByCommandId
         pendingByCommandId' = Map.delete cmdid pendingByCommandId
-        cids = fromMaybe Set.empty  mpending
+        cids = fromMaybe Set.empty mpending
         (pending', contracts') = transfer cids pending contracts
         
 
@@ -142,7 +138,7 @@ addToPending bs (uuid, ps) = bs{acs=acs'}
 transfer :: (Eq k, Ord k) => Set.Set k -> Map.Map k v -> Map.Map k v -> (Map.Map k v, Map.Map k v)
 transfer ks f t = (f', t')
     where
-        (f', nt) = Map.partitionWithKey (\k _ -> k `elem` ks) f
+        (f', nt) = Map.partitionWithKey (\k _ -> k `notElem` ks) f
         t' = Map.union t nt
 
 addToInFlight :: Message -> BotState cs -> Commands -> BotState cs
@@ -224,4 +220,4 @@ srnProcessMessage ts upd rule recov bc m systime bs =
             Left _ -> let newbs = bs{acs = acsProcessCompletion (acs bs) cp}
                         in case Map.lookup command_id (commandsInFlight (acs bs)) of
                             Just (e, cmd) -> processCommands bc ts systime m (recov newbs e cmd cp) newbs
-                            Nothing -> processCommands bc ts systime m (rule newbs Nothing) bs
+                            Nothing -> processCommands bc ts systime m (rule newbs Nothing) newbs

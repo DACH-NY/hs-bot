@@ -31,3 +31,16 @@ template Subscriber
   where
     signatory obs
     observer owner
+
+s = scenario do
+  alice <- getParty "Alice"
+  submit alice do
+    let
+      master = Master with
+        owner = alice
+        name = "a"
+        info = "a"
+
+    create master
+    create Copy with master = (master with name = "b"); obs = alice
+    create Subscriber with owner = alice; obs = alice

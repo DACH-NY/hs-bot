@@ -13,7 +13,6 @@ import DA.Ledger.Types
 import qualified Data.Map as Map
 import Data.Maybe
 import qualified Data.Set as Set
-import Debug.Trace
 
 copyBot
     :: Logger
@@ -34,7 +33,7 @@ copyRule :: PackageId -> BotContext -> Rule ()
 copyRule pid bc bs _ = updateCopies pid bc bs
 
 updateCopies :: PackageId -> BotContext -> BotState () -> [([Command], PendingSet)]
-updateCopies pid BotContext{party} BotState{acs} = traceShowId cmds
+updateCopies pid BotContext{party} BotState{acs} = cmds
     where
         subsTid = getTid pid "Subscriber"
         masterTid = getTid pid "Master"

@@ -1,6 +1,7 @@
 sdk-version: 0.13.16
 name: mastercopy
 source: daml/MasterCopy.daml
+scenario: MasterCopy:s
 parties:
   - Alice
   - Bob

@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE StandaloneDeriving #-}
 
 module DA.Ledger.App.MasterCopy.Bot (Message(..), BotContext(..), nanobot, CommandCompletion(..)) where
 
@@ -15,6 +16,8 @@ import qualified Data.Text.Lazy as Text (pack)
 
 -- Low level Nanobot
 --------------------
+
+deriving instance Show Commands
 
 type Rejection = String
 
@@ -100,6 +103,7 @@ nanobot log bc@BotContext{lid, party} u s = do
             log $ "Processing message at: " <> show t <> ": " <> show m
             let (cs, s') = u m t s
             log $ "New State: " <> show s'
+            log $ "New Commands: " <> show cs
             withAsync (mapConcurrently_  (submitCommands log lid c) cs) (\eoc -> do
                     uptloop s' c u
                     wait eoc
