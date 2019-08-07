@@ -12,6 +12,7 @@ import DA.Ledger.IsLedgerValue (IsLedgerValue(..))
 import DA.Ledger.Types
 import qualified Data.Map as Map
 import Data.Maybe
+import qualified Data.List as List
 import qualified Data.Set as Set
 
 copyBot
@@ -43,21 +44,23 @@ updateCopies pid BotContext{party} BotState{acs} = cmds
         masters = map (\(cid, r) -> (cid, fromJust $ fromRecord @Master r)) (getRecords masterTid acs)
         copies = map (\(cid, r) -> (cid, fromJust $ fromRecord @Copy r)) (getRecords copyTid acs)
 
-        ss = Prelude.filter (\(_, Subscriber{owner}) -> party == owner) subscribers
-        ms = Prelude.filter (\(_, Master{owner}) -> party == owner) masters
-        cs = Prelude.filter (\(_, Copy{master=Master{owner}}) -> party == owner) copies
+        ownedSubscribers = Prelude.filter (\(_, Subscriber{owner}) -> party == owner) subscribers
+        ownedMasters = Prelude.filter (\(_, Master{owner}) -> party == owner) masters
+        ownedCopies = Prelude.filter (\(_, Copy{master=Master{owner}}) -> party == owner) copies
         
-        pendingCs = concatMap (copiesFromCommands pid . snd . snd) (Map.toList $ commandsInFlight acs)
-        eventualcs = pendingCs ++ map snd cs
-        subscribingParties = map ((\Subscriber{obs} -> obs) . snd) ss
-        
-        archiveMissingMaster = Prelude.filter (\(_, Copy{master}) -> master `notElem` map snd ms) cs
-        archiveMissingSubscriber = Prelude.filter (\(_, Copy{obs}) -> obs `notElem` subscribingParties) cs
+        groupedcs = List.groupBy (\(_, x) (_, y) -> x == y) ownedCopies
+        duplicatecs = concatMap tail groupedcs
+        uniquecs = concatMap (take 1) groupedcs
 
-        archiveCids = Set.toList $ Set.fromList (map fst (archiveMissingMaster ++ archiveMissingSubscriber))
+        subscribingParties = map ((\Subscriber{obs} -> obs) . snd) ownedSubscribers
+        archiveMissingMaster = Prelude.filter (\(_, Copy{master}) -> master `notElem` map snd ownedMasters) uniquecs
+        archiveMissingSubscriber = Prelude.filter (\(_, Copy{obs}) -> obs `notElem` subscribingParties) uniquecs
+        archiveCids = Set.toList $ Set.fromList (map fst (archiveMissingMaster ++ archiveMissingSubscriber ++ duplicatecs))
         archiveCmds = map (\cid -> ((), [makeArchiveCommand cid copyTid], Map.singleton copyTid (Set.singleton cid))) archiveCids
 
-        neededCopies = [Copy m o | m <- map snd ms, o <- subscribingParties]
+        pendingCs = concatMap (copiesFromCommands pid . snd . snd) (Map.toList $ commandsInFlight acs)
+        eventualcs = pendingCs ++ map snd uniquecs
+        neededCopies = [Copy m o | m <- map snd ownedMasters, o <- subscribingParties]
         createCps = Set.toList (Set.difference (Set.fromList neededCopies) (Set.fromList eventualcs))
         createCmds = map (\cp -> ((), [makeCreateCommand pid (CCopy cp)], Map.empty)) createCps
 
