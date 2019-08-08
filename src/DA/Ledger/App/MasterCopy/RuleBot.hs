@@ -57,8 +57,11 @@ data BotState cs cm = BotState {
 instance (Show cs, Show cm) => Show (BotState cs cm) where
     show BotState{custom, acs} = "Active Contract Set: " <> show acs <> "\nCustom State: " <> show custom
 
+-- In `StateUpdate`, the acs in `BotState` already incorporates the event that's being passed in.
 type StateUpdate cs cm = BotState cs cm-> Event -> cs
+-- In `Rule`, the `BotState` has already incorporated the `Message` which caused the `Rule` to trigger.
 type Rule cs cm = BotState cs cm -> Maybe Event -> [(cm, [Command], PendingSet)]
+-- In `Recovery`, the acs in `BotState` already incorporates the changes due to the command rejection.
 type Recovery cs cm = BotState cs cm -> cm -> Commands -> Rejection -> [(cm, [Command], PendingSet)]
 
 data TimeMode = Static | Wallclock
@@ -100,7 +103,6 @@ tacsProcessCompletion cmdid tacs@TemplateACS{contracts, pending, pendingByComman
         cids = fromMaybe Set.empty mpending
         (pending', contracts') = transfer cids pending contracts
         
-
 processEvent :: StateUpdate cs cm -> BotState cs cm  -> Event -> BotState cs cm
 processEvent upd bs e =
     let acs' = acsProcessEvent (acs bs) e
