@@ -81,30 +81,18 @@ insertIntoACS a@ACS{templateACSs} tid cid r = a{templateACSs=ta'}
 removeFromACS :: ACS cm -> TemplateId -> ContractId -> ACS cm
 removeFromACS a@ACS{templateACSs} tid cid = a{templateACSs=ta'}
     where
-        tacs@TemplateACS{contracts} = fromMaybe emptyTemplateACS (Map.lookup tid templateACSs)
-        ta' = Map.insert tid tacs{contracts = Map.delete cid contracts} templateACSs
+        tacs@TemplateACS{contracts, pending} = fromMaybe emptyTemplateACS (Map.lookup tid templateACSs)
+        ta' = Map.insert tid tacs{contracts = Map.delete cid contracts, pending = Map.delete cid pending} templateACSs
 
 acsProcessCompletion :: ACS cm -> CommandCompletion -> ACS cm
 acsProcessCompletion a@ACS{templateACSs, commandsInFlight} c@CommandCompletion{command_id, result} =
     ACS{templateACSs=templateACSs', commandsInFlight=commandsInFlight'}
     where
         commandsInFlight' = Map.delete command_id commandsInFlight
-        tacsAction =  case result of
-            Left _ -> processCommandFailure
-            Right _ -> processCommandSuccess
-        templateACSs' = Map.map (tacsAction command_id) templateACSs
+        templateACSs' = Map.map (tacsProcessCompletion command_id) templateACSs
 
-processCommandSuccess :: CommandId -> TemplateACS -> TemplateACS
-processCommandSuccess cmdid tacs@TemplateACS{pending, pendingByCommandId} =
-    tacs{pending=pending', pendingByCommandId=pendingByCommandId'}
-    where
-        mpending = Map.lookup cmdid pendingByCommandId
-        pendingByCommandId' = Map.delete cmdid pendingByCommandId
-        cids = maybe [] Set.toList mpending
-        pending' = foldl (flip Map.delete) pending cids
-
-processCommandFailure :: CommandId -> TemplateACS -> TemplateACS
-processCommandFailure cmdid tacs@TemplateACS{contracts, pending, pendingByCommandId} =
+tacsProcessCompletion :: CommandId -> TemplateACS -> TemplateACS
+tacsProcessCompletion cmdid tacs@TemplateACS{contracts, pending, pendingByCommandId} =
     tacs{contracts=contracts', pending=pending', pendingByCommandId=pendingByCommandId'}
     where
         mpending = Map.lookup cmdid pendingByCommandId

@@ -44,13 +44,6 @@ submitCommands log lid chan cs@Commands{cid} = do
     log $ "Command completion: " <> show cp
     writeChan chan (MCompletion cp)
 
-parallel :: [IO a] -> IO [a]
-parallel (x:xs) = withAsync x (\r -> do
-        ys <- parallel xs
-        y <- wait r
-        return (y : ys)
-    )
-
 data BotContext = BotContext {
     aid :: ApplicationId,
     party :: Party,
